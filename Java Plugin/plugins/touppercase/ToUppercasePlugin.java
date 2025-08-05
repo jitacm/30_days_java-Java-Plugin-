@@ -8,7 +8,6 @@ public class ToUppercasePlugin implements Plugin {
     public String getName() {
         return "Convert Selection to Uppercase";
     }
-
     @Override
     public void execute(JTextArea textArea) {
         String selectedText = textArea.getSelectedText();
