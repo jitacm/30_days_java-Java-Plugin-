@@ -7,13 +7,13 @@ import javax.swing.JOptionPane;
 public class WordCountPlugin implements Plugin {
     @Override
     public String getName() {
-        return "Count Words";
+        return "Word Count";
     }
 
     @Override
     public void execute(JTextArea textArea) {
         String text = textArea.getText();
-        if (text == null || text.trim().isEmpty()) {
+        if (text == null || text.isEmpty()) {
             JOptionPane.showMessageDialog(null, "Word count: 0");
             return;
         }
