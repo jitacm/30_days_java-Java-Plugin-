@@ -3,11 +3,16 @@ package plugins.touppercase;
 import editor.api.Plugin;
 import javax.swing.JTextArea;
 
+/**
+ * A plugin that converts the selected text to uppercase.
+ */
 public class ToUppercasePlugin implements Plugin {
+
     @Override
     public String getName() {
         return "Convert Selection to Uppercase";
     }
+
     @Override
     public void execute(JTextArea textArea) {
         String selectedText = textArea.getSelectedText();
