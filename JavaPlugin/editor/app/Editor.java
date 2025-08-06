@@ -4,8 +4,12 @@ import editor.api.Plugin;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.undo.UndoManager;
+import javax.swing.event.UndoableEditEvent;
+import javax.swing.event.UndoableEditListener;
 import java.awt.*;
 import java.awt.event.ActionListener;
+import java.awt.event.KeyEvent;
 import java.io.*;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -15,7 +19,7 @@ import java.util.jar.JarFile;
 import java.util.jar.JarEntry;
 
 /**
- * The main editor application with enhanced UI.
+ * The main editor application with enhanced UI and Undo/Redo support.
  */
 public class Editor extends JFrame {
 
@@ -24,6 +28,7 @@ public class Editor extends JFrame {
     private JLabel statusBar;
     private JMenu pluginsMenu;
     private List<Plugin> loadedPlugins = new ArrayList<>();
+    private UndoManager undoManager = new UndoManager();
 
     public Editor() {
         // Set window title and size
@@ -64,7 +69,7 @@ public class Editor extends JFrame {
         statusBar.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
         add(statusBar, BorderLayout.SOUTH);
 
-        // --- FIXED: Document Listener for Real-time Updates ---
+        // Real-time status update
         textArea.getDocument().addDocumentListener(new DocumentListener() {
             @Override
             public void insertUpdate(DocumentEvent e) { updateStatus(); }
@@ -73,7 +78,14 @@ public class Editor extends JFrame {
             @Override
             public void changedUpdate(DocumentEvent e) { updateStatus(); }
         });
-        // ----------------------------------------------------
+
+        // Add Undo/Redo support
+        textArea.getDocument().addUndoableEditListener(new UndoableEditListener() {
+            @Override
+            public void undoableEditHappened(UndoableEditEvent e) {
+                undoManager.addEdit(e.getEdit());
+            }
+        });
 
         fileChooser = new JFileChooser();
         setupMenuBar();
@@ -81,11 +93,11 @@ public class Editor extends JFrame {
     }
 
     /**
-     * Sets up the menu bar with enhanced styling.
+     * Sets up the menu bar with File, Edit, and Plugins menus.
      */
     private void setupMenuBar() {
         JMenuBar menuBar = new JMenuBar();
-        
+
         // File Menu
         JMenu fileMenu = new JMenu("File");
         fileMenu.setMnemonic('F');
@@ -95,6 +107,32 @@ public class Editor extends JFrame {
         fileMenu.addSeparator();
         addMenuItem(fileMenu, "Exit", "Exit the application", e -> System.exit(0));
         menuBar.add(fileMenu);
+
+        // Edit Menu (Undo/Redo)
+        JMenu editMenu = new JMenu("Edit");
+        editMenu.setMnemonic('E');
+
+        JMenuItem undoItem = new JMenuItem("Undo");
+        undoItem.setToolTipText("Undo last change");
+        undoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Z, KeyEvent.CTRL_DOWN_MASK));
+        undoItem.addActionListener(e -> {
+            if (undoManager.canUndo()) {
+                undoManager.undo();
+            }
+        });
+
+        JMenuItem redoItem = new JMenuItem("Redo");
+        redoItem.setToolTipText("Redo last undone change");
+        redoItem.setAccelerator(KeyStroke.getKeyStroke(KeyEvent.VK_Y, KeyEvent.CTRL_DOWN_MASK));
+        redoItem.addActionListener(e -> {
+            if (undoManager.canRedo()) {
+                undoManager.redo();
+            }
+        });
+
+        editMenu.add(undoItem);
+        editMenu.add(redoItem);
+        menuBar.add(editMenu);
 
         // Plugins Menu
         pluginsMenu = new JMenu("Plugins");
@@ -122,15 +160,10 @@ public class Editor extends JFrame {
         SwingUtilities.invokeLater(() -> {
             String text = textArea.getText();
             int lines = textArea.getLineCount();
-            
-            // Handle empty text for word count
             String[] words = text.trim().isEmpty() ? new String[0] : text.trim().split("\\s+");
             int wordCount = words.length;
-            
             int charCount = text.length();
-            
-            statusBar.setText(String.format(" Lines: %d | Words: %d | Chars: %d ", 
-                lines, wordCount, charCount));
+            statusBar.setText(String.format(" Lines: %d | Words: %d | Chars: %d ", lines, wordCount, charCount));
         });
     }
 
@@ -153,8 +186,7 @@ public class Editor extends JFrame {
         for (File file : pluginFiles) {
             try {
                 URL jarUrl = file.toURI().toURL();
-                URLClassLoader classLoader = new URLClassLoader(new URL[]{jarUrl}, 
-                    Plugin.class.getClassLoader());
+                URLClassLoader classLoader = new URLClassLoader(new URL[]{jarUrl}, Plugin.class.getClassLoader());
 
                 try (JarFile jarFile = new JarFile(file)) {
                     java.util.Enumeration<JarEntry> entries = jarFile.entries();
@@ -167,24 +199,24 @@ public class Editor extends JFrame {
                                 if (Plugin.class.isAssignableFrom(cls) && !cls.isInterface()) {
                                     Plugin plugin = (Plugin) cls.getDeclaredConstructor().newInstance();
                                     loadedPlugins.add(plugin);
-                                    
+
                                     JMenuItem pluginItem = new JMenuItem(plugin.getName());
                                     pluginItem.setToolTipText("Run " + plugin.getName());
                                     pluginItem.addActionListener(e -> {
                                         try {
                                             plugin.execute(textArea);
                                         } catch (Exception ex) {
-                                            JOptionPane.showMessageDialog(Editor.this, 
-                                                "Error executing plugin: " + ex.getMessage(), 
-                                                "Error", JOptionPane.ERROR_MESSAGE);
+                                            JOptionPane.showMessageDialog(Editor.this,
+                                                    "Error executing plugin: " + ex.getMessage(),
+                                                    "Error", JOptionPane.ERROR_MESSAGE);
                                         }
                                     });
-                                    
+
                                     pluginsMenu.add(pluginItem);
                                     System.out.println("Loaded plugin: " + plugin.getName());
                                 }
                             } catch (ClassNotFoundException e) {
-                                // This is fine, could be an inner class or non-plugin class
+                                // Ignore non-plugin classes
                             } catch (Exception e) {
                                 System.err.println("Error instantiating plugin from " + className + ": " + e.getMessage());
                             }
@@ -195,22 +227,20 @@ public class Editor extends JFrame {
                 System.err.println("Error loading plugin JAR: " + file.getName() + " - " + e.getMessage());
             }
         }
-        
+
         if (loadedPlugins.isEmpty()) {
             pluginsMenu.add(new JMenuItem("No valid plugins found"));
         }
     }
 
-    // --- The rest of the methods (openFile, saveFile, findText) are unchanged and work correctly. ---
-    
     private void openFile() {
         if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             File file = fileChooser.getSelectedFile();
             try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
                 textArea.read(reader, null);
             } catch (IOException e) {
-                JOptionPane.showMessageDialog(this, "Error opening file: " + e.getMessage(), 
-                    "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Error opening file: " + e.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
@@ -221,8 +251,8 @@ public class Editor extends JFrame {
             try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
                 textArea.write(writer);
             } catch (IOException e) {
-                JOptionPane.showMessageDialog(this, "Error saving file: " + e.getMessage(), 
-                    "Error", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Error saving file: " + e.getMessage(),
+                        "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
@@ -238,8 +268,8 @@ public class Editor extends JFrame {
                 textArea.setSelectionEnd(index + textToFind.length());
                 textArea.requestFocus();
             } else {
-                JOptionPane.showMessageDialog(this, "Text not found", "Not Found", 
-                    JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Text not found", "Not Found",
+                        JOptionPane.INFORMATION_MESSAGE);
             }
         }
     }
