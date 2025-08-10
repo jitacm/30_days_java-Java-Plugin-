@@ -21,7 +21,7 @@ public class SpellCheckPlugin implements Plugin {
         String text = editor.getText().toLowerCase();
         Matcher matcher = Pattern.compile("\\b\\w+\\b").matcher(text);
 
-        // Fixing ambiguous List issue below!
+
         java.util.List<String> misspelled = new ArrayList<>();
 
         while (matcher.find()) {
@@ -45,7 +45,7 @@ public class SpellCheckPlugin implements Plugin {
         dictionary = new HashSet<>(Arrays.asList(
                 "this", "is", "a", "simple", "spell", "check", "plugin", "for",
                 "the", "modern", "plugin", "text", "editor", "java", "code"
-                // Add more words as needed
+     
         ));
     }
 }
