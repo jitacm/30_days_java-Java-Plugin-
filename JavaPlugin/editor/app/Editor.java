@@ -5,9 +5,11 @@ import editor.api.Plugin;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.undo.CannotRedoException;
+import javax.swing.undo.CannotUndoException;
 import javax.swing.undo.UndoManager;
 import java.awt.*;
-import java.awt.event.*;
+import java.awt.event.ActionListener;
 import java.io.*;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -17,233 +19,282 @@ import java.util.jar.JarFile;
 
 public class Editor extends JFrame {
 
-    private final JTabbedPane tabbedPane = new JTabbedPane();
-    private final JLabel statusBar = new JLabel(" Lines: 0 | Words: 0 | Chars: 0 ");
-    private final JFileChooser fileChooser = new JFileChooser();
-    private final JMenu pluginsMenu = new JMenu("Plugins");
-    private final Map<JTextArea, UndoManager> undoManagers = new HashMap<>();
+    private JTextArea textArea;
+    private JFileChooser fileChooser;
+    private JLabel statusBar;
+    private JMenu pluginsMenu;
+    private final Map<Plugin, Boolean> pluginStates = new LinkedHashMap<>();
+    private File currentFile;
+    private UndoManager undoManager = new UndoManager();
 
     public Editor() {
         setTitle("Modern Plugin Text Editor");
-        setSize(1000, 700);
+        setSize(900, 700);
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
-        setLookAndFeel();
-        setLayout(new BorderLayout());
-
-        // Tabbed Editor Area
-        add(tabbedPane, BorderLayout.CENTER);
-
-        // Status Bar
-        statusBar.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-        statusBar.setOpaque(true);
-        statusBar.setBackground(new Color(50, 50, 50));
-        statusBar.setForeground(Color.WHITE);
-        add(statusBar, BorderLayout.SOUTH);
-
-        setupMenuBar();
-        loadPlugins();
-        createNewTab();
-    }
-
-    private void setLookAndFeel() {
         try {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         } catch (Exception ignored) {}
+
+        textArea = new JTextArea();
+        textArea.setFont(new Font("Consolas", Font.PLAIN, 14));
+        textArea.setBackground(new Color(45, 45, 45));
+        textArea.setForeground(new Color(220, 220, 220));
+        textArea.setCaretColor(Color.WHITE);
+        textArea.setLineWrap(true);
+        textArea.setWrapStyleWord(true);
+        textArea.setTabSize(4);
+
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        add(scrollPane, BorderLayout.CENTER);
+
+        statusBar = new JLabel(" Lines: 0 | Words: 0 | Chars: 0 ");
+        statusBar.setOpaque(true);
+        statusBar.setBackground(new Color(60, 60, 60));
+        statusBar.setForeground(Color.WHITE);
+        statusBar.setHorizontalAlignment(SwingConstants.LEFT);
+        statusBar.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
+        add(statusBar, BorderLayout.SOUTH);
+
+        textArea.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) { updateStatus(); }
+            @Override public void removeUpdate(DocumentEvent e) { updateStatus(); }
+            @Override public void changedUpdate(DocumentEvent e) { updateStatus(); }
+        });
+
+        // Undo/Redo support
+        textArea.getDocument().addUndoableEditListener(e -> undoManager.addEdit(e.getEdit()));
+        addUndoRedoKeyBindings();
+
+        fileChooser = new JFileChooser();
+
+        setupToolBar();
+        setupMenuBar();
+        loadPlugins();
+    }
+
+    private void setupToolBar() {
+        JToolBar toolBar = new JToolBar();
+        toolBar.setFloatable(false);
+
+        JButton newBtn = new JButton("New");
+        newBtn.addActionListener(e -> newFile());
+        toolBar.add(newBtn);
+
+        JButton openBtn = new JButton("Open");
+        openBtn.addActionListener(e -> openFile());
+        toolBar.add(openBtn);
+
+        JButton saveBtn = new JButton("Save");
+        saveBtn.addActionListener(e -> saveFile());
+        toolBar.add(saveBtn);
+
+        toolBar.addSeparator();
+
+        JButton undoBtn = new JButton("Undo");
+        undoBtn.addActionListener(e -> undoAction());
+        toolBar.add(undoBtn);
+
+        JButton redoBtn = new JButton("Redo");
+        redoBtn.addActionListener(e -> redoAction());
+        toolBar.add(redoBtn);
+
+        add(toolBar, BorderLayout.NORTH);
     }
 
     private void setupMenuBar() {
         JMenuBar menuBar = new JMenuBar();
 
-        // File Menu
         JMenu fileMenu = new JMenu("File");
-        fileMenu.add(createMenuItem("New", e -> createNewTab(), KeyEvent.VK_N));
-        fileMenu.add(createMenuItem("Open", e -> openFile(), KeyEvent.VK_O));
-        fileMenu.add(createMenuItem("Save", e -> saveFile(), KeyEvent.VK_S));
-        fileMenu.add(createMenuItem("Find", e -> findText(), KeyEvent.VK_F));
+        addMenuItem(fileMenu, "New", "Create a new file", e -> newFile());
+        addMenuItem(fileMenu, "Open", "Open a text file", e -> openFile());
+        addMenuItem(fileMenu, "Save", "Save the current file", e -> saveFile());
+        addMenuItem(fileMenu, "Find", "Find text in the document", e -> findText());
         fileMenu.addSeparator();
-        fileMenu.add(createMenuItem("Exit", e -> System.exit(0), KeyEvent.VK_Q));
+        addMenuItem(fileMenu, "Exit", "Exit the application", e -> System.exit(0));
         menuBar.add(fileMenu);
 
-        // Edit Menu
-        JMenu editMenu = new JMenu("Edit");
-        editMenu.add(createMenuItem("Undo", e -> undo(), KeyEvent.VK_Z));
-        editMenu.add(createMenuItem("Redo", e -> redo(), KeyEvent.VK_Y));
-        menuBar.add(editMenu);
-
-        // Plugins Menu
+        pluginsMenu = new JMenu("Plugins");
         menuBar.add(pluginsMenu);
 
         setJMenuBar(menuBar);
     }
 
-    private JMenuItem createMenuItem(String title, ActionListener action, int keyEvent) {
-        JMenuItem item = new JMenuItem(title);
-        item.addActionListener(action);
-        item.setAccelerator(KeyStroke.getKeyStroke(keyEvent, InputEvent.CTRL_DOWN_MASK));
-        return item;
+    private void addMenuItem(JMenu menu, String text, String tooltip, ActionListener listener) {
+        JMenuItem item = new JMenuItem(text);
+        item.setToolTipText(tooltip);
+        item.addActionListener(listener);
+        menu.add(item);
     }
 
-
-
-    private JButton createToolButton(String title, ActionListener action) {
-        JButton button = new JButton(title);
-        button.addActionListener(action);
-        return button;
-    }
-
-    private void createNewTab() {
-        JTextArea textArea = createTextArea();
-        JScrollPane scrollPane = new JScrollPane(textArea);
-        tabbedPane.addTab("Untitled", scrollPane);
-        tabbedPane.setSelectedComponent(scrollPane);
-        updateStatus(textArea);
-    }
-
-    private JTextArea createTextArea() {
-        JTextArea textArea = new JTextArea();
-        textArea.setFont(new Font("Consolas", Font.PLAIN, 14));
-        textArea.setBackground(new Color(40, 40, 40));
-        textArea.setForeground(Color.WHITE);
-        textArea.setCaretColor(Color.WHITE);
-        textArea.setLineWrap(true);
-        textArea.setWrapStyleWord(true);
-
-        UndoManager undoManager = new UndoManager();
-        undoManagers.put(textArea, undoManager);
-
-        textArea.getDocument().addUndoableEditListener(e -> undoManager.addEdit(e.getEdit()));
-        textArea.getDocument().addDocumentListener(new DocumentListener() {
-            public void insertUpdate(DocumentEvent e) { updateStatus(textArea); }
-            public void removeUpdate(DocumentEvent e) { updateStatus(textArea); }
-            public void changedUpdate(DocumentEvent e) { updateStatus(textArea); }
-        });
-
-        return textArea;
-    }
-
-    private JTextArea getCurrentTextArea() {
-        JScrollPane scrollPane = (JScrollPane) tabbedPane.getSelectedComponent();
-        if (scrollPane == null) return null;
-        Component view = scrollPane.getViewport().getView();
-        if (view instanceof JTextArea) {
-            return (JTextArea) view;
-        }
-        return null;
-    }
-
-    private void updateStatus(JTextArea area) {
+    private void updateStatus() {
         SwingUtilities.invokeLater(() -> {
-            String text = area.getText();
-            int lines = area.getLineCount();
+            String text = textArea.getText();
+            int lines = textArea.getLineCount();
             int words = text.trim().isEmpty() ? 0 : text.trim().split("\\s+").length;
             int chars = text.length();
-            statusBar.setText(" Lines: " + lines + " | Words: " + words + " | Chars: " + chars + " ");
+            statusBar.setText(String.format(" Lines: %d | Words: %d | Chars: %d ", lines, words, chars));
         });
+    }
+
+    private void addUndoRedoKeyBindings() {
+        textArea.getInputMap().put(KeyStroke.getKeyStroke("control Z"), "Undo");
+        textArea.getActionMap().put("Undo", new AbstractAction() {
+            public void actionPerformed(java.awt.event.ActionEvent e) { undoAction(); }
+        });
+
+        textArea.getInputMap().put(KeyStroke.getKeyStroke("control Y"), "Redo");
+        textArea.getActionMap().put("Redo", new AbstractAction() {
+            public void actionPerformed(java.awt.event.ActionEvent e) { redoAction(); }
+        });
+    }
+
+    private void undoAction() {
+        try { if (undoManager.canUndo()) undoManager.undo(); }
+        catch (CannotUndoException ignored) {}
+    }
+
+    private void redoAction() {
+        try { if (undoManager.canRedo()) undoManager.redo(); }
+        catch (CannotRedoException ignored) {}
+    }
+
+    private void newFile() {
+        textArea.setText("");
+        currentFile = null;
+        setTitle("Modern Plugin Text Editor - New File");
+        undoManager.discardAllEdits();
     }
 
     private void openFile() {
         if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File file = fileChooser.getSelectedFile();
-            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-                JTextArea textArea = createTextArea();
+            currentFile = fileChooser.getSelectedFile();
+            try (BufferedReader reader = new BufferedReader(new FileReader(currentFile))) {
                 textArea.read(reader, null);
-                JScrollPane scrollPane = new JScrollPane(textArea);
-                tabbedPane.addTab(file.getName(), scrollPane);
-                tabbedPane.setSelectedComponent(scrollPane);
-                updateStatus(textArea);
+                setTitle("Modern Plugin Text Editor - " + currentFile.getName());
+                undoManager.discardAllEdits();
             } catch (IOException e) {
-                showError("Failed to open file: " + e.getMessage());
+                JOptionPane.showMessageDialog(this, "Error opening file: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
             }
         }
     }
 
     private void saveFile() {
-        JTextArea textArea = getCurrentTextArea();
-        if (textArea == null) return;
-
-        if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
-            File file = fileChooser.getSelectedFile();
-            try (BufferedWriter writer = new BufferedWriter(new FileWriter(file))) {
-                textArea.write(writer);
-                tabbedPane.setTitleAt(tabbedPane.getSelectedIndex(), file.getName());
-            } catch (IOException e) {
-                showError("Failed to save file: " + e.getMessage());
-            }
+        if (currentFile == null) {
+            if (fileChooser.showSaveDialog(this) == JFileChooser.APPROVE_OPTION) {
+                currentFile = fileChooser.getSelectedFile();
+            } else return;
+        }
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(currentFile))) {
+            textArea.write(writer);
+            setTitle("Modern Plugin Text Editor - " + currentFile.getName());
+        } catch (IOException e) {
+            JOptionPane.showMessageDialog(this, "Error saving file: " + e.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void findText() {
-        JTextArea textArea = getCurrentTextArea();
-        if (textArea == null) return;
-
-        String toFind = JOptionPane.showInputDialog(this, "Enter text to find:");
-        if (toFind != null && !toFind.isEmpty()) {
-            String content = textArea.getText();
-            int index = content.indexOf(toFind);
-            if (index >= 0) {
+        String textToFind = JOptionPane.showInputDialog(this, "Enter text to find:");
+        if (textToFind != null && !textToFind.isEmpty()) {
+            String text = textArea.getText();
+            int index = text.indexOf(textToFind);
+            if (index != -1) {
                 textArea.setCaretPosition(index);
-                textArea.select(index, index + toFind.length());
+                textArea.setSelectionStart(index);
+                textArea.setSelectionEnd(index + textToFind.length());
+                textArea.requestFocus();
             } else {
-                JOptionPane.showMessageDialog(this, "Text not found.");
+                JOptionPane.showMessageDialog(this, "Text not found", "Not Found", JOptionPane.INFORMATION_MESSAGE);
             }
-        }
-    }
-
-    private void undo() {
-        JTextArea textArea = getCurrentTextArea();
-        if (textArea != null) {
-            UndoManager manager = undoManagers.get(textArea);
-            if (manager != null && manager.canUndo()) manager.undo();
-        }
-    }
-
-    private void redo() {
-        JTextArea textArea = getCurrentTextArea();
-        if (textArea != null) {
-            UndoManager manager = undoManagers.get(textArea);
-            if (manager != null && manager.canRedo()) manager.redo();
         }
     }
 
     private void loadPlugins() {
-        File pluginFolder = new File("plugins");
-        if (!pluginFolder.exists() || !pluginFolder.isDirectory()) return;
+        pluginsMenu.removeAll();
+        pluginStates.clear();
 
-        File[] jars = pluginFolder.listFiles((dir, name) -> name.endsWith(".jar"));
-        if (jars == null) return;
+        File pluginsDir = new File("plugins");
+        if (!pluginsDir.exists() || !pluginsDir.isDirectory()) {
+            pluginsMenu.add(new JMenuItem("No plugins found"));
+            return;
+        }
 
-        for (File jar : jars) {
+        File[] pluginFiles = pluginsDir.listFiles((dir, name) -> name.endsWith(".jar"));
+        if (pluginFiles == null || pluginFiles.length == 0) {
+            pluginsMenu.add(new JMenuItem("No plugins found"));
+            return;
+        }
+
+        for (File file : pluginFiles) {
             try {
-                URLClassLoader loader = new URLClassLoader(new URL[]{ jar.toURI().toURL() }, getClass().getClassLoader());
-                JarFile jarFile = new JarFile(jar);
-                Enumeration<JarEntry> entries = jarFile.entries();
-                while (entries.hasMoreElements()) {
-                    JarEntry entry = entries.nextElement();
-                    if (entry.getName().endsWith(".class")) {
-                        String className = entry.getName().replace("/", ".").replace(".class", "");
-                        Class<?> cls = loader.loadClass(className);
-                        if (Plugin.class.isAssignableFrom(cls)) {
-                            Plugin plugin = (Plugin) cls.getDeclaredConstructor().newInstance();
-                            JMenuItem item = new JMenuItem(plugin.getName());
-                            item.addActionListener(e -> {
-                                JTextArea area = getCurrentTextArea();
-                                if (area != null) plugin.execute(area);
-                            });
-                            pluginsMenu.add(item);
+                URL jarUrl = file.toURI().toURL();
+                URLClassLoader classLoader = new URLClassLoader(new URL[]{jarUrl}, Plugin.class.getClassLoader());
+                try (JarFile jarFile = new JarFile(file)) {
+                    Enumeration<JarEntry> entries = jarFile.entries();
+                    while (entries.hasMoreElements()) {
+                        JarEntry entry = entries.nextElement();
+                        if (entry.getName().endsWith(".class")) {
+                            String className = entry.getName().replace("/", ".").replace(".class", "");
+                            try {
+                                Class<?> cls = classLoader.loadClass(className);
+                                if (Plugin.class.isAssignableFrom(cls) && !cls.isInterface()) {
+                                    Plugin plugin = (Plugin) cls.getDeclaredConstructor().newInstance();
+                                    pluginStates.put(plugin, true);
+                                    JMenuItem pluginItem = new JMenuItem(plugin.getName());
+                                    pluginItem.addActionListener(e -> {
+                                        if (!pluginStates.get(plugin)) {
+                                            JOptionPane.showMessageDialog(this, "Plugin is disabled.", "Plugin Disabled", JOptionPane.WARNING_MESSAGE);
+                                            return;
+                                        }
+                                        plugin.execute(textArea);
+                                    });
+                                    pluginsMenu.add(pluginItem);
+                                }
+                            } catch (ClassNotFoundException ignored) {}
                         }
                     }
                 }
-                jarFile.close();
             } catch (Exception e) {
-                System.err.println("Plugin load error in: " + jar.getName() + " — " + e.getMessage());
+                System.err.println("Error loading plugin JAR: " + file.getName() + " - " + e.getMessage());
             }
         }
+
+        pluginsMenu.addSeparator();
+        JMenuItem manageItem = new JMenuItem("Manage Plugins...");
+        manageItem.addActionListener(e -> openPluginManager());
+        pluginsMenu.add(manageItem);
+
+        JMenuItem reloadItem = new JMenuItem("Reload Plugins");
+        reloadItem.addActionListener(e -> loadPlugins());
+        pluginsMenu.add(reloadItem);
     }
 
-    private void showError(String message) {
-        JOptionPane.showMessageDialog(this, message, "Error", JOptionPane.ERROR_MESSAGE);
+    private void openPluginManager() {
+        JDialog dialog = new JDialog(this, "Plugin Manager", true);
+        dialog.setSize(400, 300);
+        dialog.setLocationRelativeTo(this);
+        dialog.setLayout(new BorderLayout());
+
+        JPanel panel = new JPanel(new GridLayout(0, 3, 5, 5));
+        for (Plugin plugin : pluginStates.keySet()) {
+            JLabel nameLabel = new JLabel(plugin.getName());
+            JButton toggleBtn = new JButton(pluginStates.get(plugin) ? "Disable" : "Enable");
+            JLabel statusLabel = new JLabel(pluginStates.get(plugin) ? "Enabled" : "Disabled");
+            toggleBtn.addActionListener(e -> {
+                boolean current = pluginStates.get(plugin);
+                pluginStates.put(plugin, !current);
+                toggleBtn.setText(!current ? "Disable" : "Enable");
+                statusLabel.setText(!current ? "Enabled" : "Disabled");
+            });
+            panel.add(nameLabel);
+            panel.add(toggleBtn);
+            panel.add(statusLabel);
+        }
+
+        dialog.add(new JScrollPane(panel), BorderLayout.CENTER);
+        dialog.setVisible(true);
     }
 
     public static void main(String[] args) {
