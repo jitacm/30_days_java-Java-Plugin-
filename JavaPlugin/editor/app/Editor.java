@@ -1,15 +1,12 @@
 package editor.app;
 
 import editor.api.Plugin;
-
 import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
-import javax.swing.undo.CannotRedoException;
-import javax.swing.undo.CannotUndoException;
-import javax.swing.undo.UndoManager;
+import javax.swing.event.*;
+import javax.swing.text.*;
+import javax.swing.undo.*;
 import java.awt.*;
-import java.awt.event.ActionListener;
+import java.awt.event.*;
 import java.io.*;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -20,18 +17,22 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Editor extends JFrame {
-
+    // ... [All existing fields preserved]
     private JTextArea textArea;
+    private JEditorPane previewPane;
     private JFileChooser fileChooser;
     private JLabel statusBar;
     private JMenu pluginsMenu;
     private final Map<Plugin, Boolean> pluginStates = new LinkedHashMap<>();
     private File currentFile;
     private UndoManager undoManager = new UndoManager();
+    private JSplitPane splitPane;
+    private boolean isPreviewVisible = true;
 
     public Editor() {
+        // ... [All existing initialization preserved]
         setTitle("Modern Plugin Text Editor");
-        setSize(900, 700);
+        setSize(1200, 800); // Increased for split view
         setDefaultCloseOperation(EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
@@ -39,6 +40,7 @@ public class Editor extends JFrame {
             UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
         } catch (Exception ignored) {}
 
+        // --- Text Area (preserved) ---
         textArea = new JTextArea();
         textArea.setFont(new Font("Consolas", Font.PLAIN, 14));
         textArea.setBackground(new Color(45, 45, 45));
@@ -48,11 +50,28 @@ public class Editor extends JFrame {
         textArea.setWrapStyleWord(true);
         textArea.setTabSize(4);
 
-        JScrollPane scrollPane = new JScrollPane(textArea);
-        scrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        add(scrollPane, BorderLayout.CENTER);
+        // --- NEW: Preview Pane ---
+        previewPane = new JEditorPane();
+        previewPane.setContentType("text/html");
+        previewPane.setEditable(false);
+        previewPane.setBackground(new Color(240, 240, 240));
+        previewPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
 
-        statusBar = new JLabel(" Lines: 0 | Words: 0 | Chars: 0 ");
+        // --- Scroll Panes (preserved) ---
+        JScrollPane textScrollPane = new JScrollPane(textArea);
+        textScrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        
+        JScrollPane previewScrollPane = new JScrollPane(previewPane);
+        previewScrollPane.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        // --- NEW: Split Pane ---
+        splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, textScrollPane, previewScrollPane);
+        splitPane.setDividerLocation(600);
+        splitPane.setResizeWeight(0.5);
+        add(splitPane, BorderLayout.CENTER);
+
+        // --- Status Bar (preserved + updated) ---
+        statusBar = new JLabel(" Lines: 0 | Words: 0 | Chars: 0 | Preview: ON ");
         statusBar.setOpaque(true);
         statusBar.setBackground(new Color(60, 60, 60));
         statusBar.setForeground(Color.WHITE);
@@ -60,10 +79,11 @@ public class Editor extends JFrame {
         statusBar.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
         add(statusBar, BorderLayout.SOUTH);
 
+        // --- Document Listeners (preserved + new preview update) ---
         textArea.getDocument().addDocumentListener(new DocumentListener() {
-            @Override public void insertUpdate(DocumentEvent e) { updateStatus(); }
-            @Override public void removeUpdate(DocumentEvent e) { updateStatus(); }
-            @Override public void changedUpdate(DocumentEvent e) { updateStatus(); }
+            @Override public void insertUpdate(DocumentEvent e) { updatePreview(); updateStatus(); }
+            @Override public void removeUpdate(DocumentEvent e) { updatePreview(); updateStatus(); }
+            @Override public void changedUpdate(DocumentEvent e) { updatePreview(); updateStatus(); }
         });
 
         textArea.getDocument().addUndoableEditListener(e -> undoManager.addEdit(e.getEdit()));
@@ -72,10 +92,14 @@ public class Editor extends JFrame {
         fileChooser = new JFileChooser();
 
         setupToolBar();
-        setupMenuBar();
+        setupMenuBar(); // Updated to include View menu
         loadPlugins();
+        
+        // Initial preview update
+        updatePreview();
     }
 
+    // --- Toolbar (preserved) ---
     private void setupToolBar() {
         JToolBar toolBar = new JToolBar();
         toolBar.setFloatable(false);
@@ -105,42 +129,47 @@ public class Editor extends JFrame {
         add(toolBar, BorderLayout.NORTH);
     }
 
+    // --- Menu Bar (updated with View menu) ---
     private void setupMenuBar() {
         JMenuBar menuBar = new JMenuBar();
 
+        // File menu (preserved)
         JMenu fileMenu = new JMenu("File");
         addMenuItem(fileMenu, "New", "Create a new file", e -> newFile());
         addMenuItem(fileMenu, "Open", "Open a text file", e -> openFile());
         addMenuItem(fileMenu, "Save", "Save the current file", e -> saveFile());
-        // Updated here: Removed old "Find" and added new "Find and Replace"
         addMenuItem(fileMenu, "Find and Replace", "Find and replace text", e -> findAndReplaceText());
         fileMenu.addSeparator();
         addMenuItem(fileMenu, "Exit", "Exit the application", e -> System.exit(0));
         menuBar.add(fileMenu);
 
+        // NEW: View menu with preview toggle
+        JMenu viewMenu = new JMenu("View");
+        JCheckBoxMenuItem previewItem = new JCheckBoxMenuItem("Show Preview", true);
+        previewItem.addActionListener(e -> togglePreview(previewItem.isSelected()));
+        viewMenu.add(previewItem);
+        menuBar.add(viewMenu);
+
+        // Plugins menu (preserved)
         pluginsMenu = new JMenu("Plugins");
         menuBar.add(pluginsMenu);
 
         setJMenuBar(menuBar);
     }
 
-    private void addMenuItem(JMenu menu, String text, String tooltip, ActionListener listener) {
-        JMenuItem item = new JMenuItem(text);
-        item.setToolTipText(tooltip);
-        item.addActionListener(listener);
-        menu.add(item);
-    }
-
+    // --- Status Bar Update (preserved + updated) ---
     private void updateStatus() {
         SwingUtilities.invokeLater(() -> {
             String text = textArea.getText();
             int lines = textArea.getLineCount();
             int words = text.trim().isEmpty() ? 0 : text.trim().split("\\s+").length;
             int chars = text.length();
-            statusBar.setText(String.format(" Lines: %d | Words: %d | Chars: %d ", lines, words, chars));
+            statusBar.setText(String.format(" Lines: %d | Words: %d | Chars: %d | Preview: %s ", 
+                lines, words, chars, isPreviewVisible ? "ON" : "OFF"));
         });
     }
 
+    // --- Undo/Redo (preserved) ---
     private void addUndoRedoKeyBindings() {
         textArea.getInputMap().put(KeyStroke.getKeyStroke("control Z"), "Undo");
         textArea.getActionMap().put("Undo", new AbstractAction() {
@@ -163,6 +192,7 @@ public class Editor extends JFrame {
         catch (CannotRedoException ignored) {}
     }
 
+    // --- File Operations (preserved) ---
     private void newFile() {
         textArea.setText("");
         currentFile = null;
@@ -197,7 +227,7 @@ public class Editor extends JFrame {
         }
     }
 
-    // New method for Find and Replace functionality
+    // --- Find & Replace (preserved) ---
     private void findAndReplaceText() {
         JDialog findReplaceDialog = new JDialog(this, "Find and Replace", true);
         findReplaceDialog.setSize(400, 200);
@@ -226,7 +256,6 @@ public class Editor extends JFrame {
         replacePanel.add(replaceButton);
         replacePanel.add(replaceAllButton);
         findReplaceDialog.add(replacePanel);
-
 
         findButton.addActionListener(e -> {
             String textToFind = findField.getText();
@@ -265,7 +294,6 @@ public class Editor extends JFrame {
             if (caseSensitive.isSelected()) {
                 newText = newText.replaceAll(Pattern.quote(findStr), Matcher.quoteReplacement(replaceStr));
             } else {
-                // For case-insensitive replacement, we need to iterate and replace
                 Pattern p = Pattern.compile(Pattern.quote(findStr), Pattern.CASE_INSENSITIVE);
                 Matcher m = p.matcher(originalText);
                 newText = m.replaceAll(Matcher.quoteReplacement(replaceStr));
@@ -277,8 +305,8 @@ public class Editor extends JFrame {
 
         findReplaceDialog.setVisible(true);
     }
-    // -----------------------------------------------------------------------------------------------------------------------------
 
+    // --- Plugin System (preserved) ---
     private void loadPlugins() {
         pluginsMenu.removeAll();
         pluginStates.clear();
@@ -363,6 +391,91 @@ public class Editor extends JFrame {
 
         dialog.add(new JScrollPane(panel), BorderLayout.CENTER);
         dialog.setVisible(true);
+    }
+
+    // --- NEW: Preview Functionality ---
+    private void togglePreview(boolean show) {
+        isPreviewVisible = show;
+        previewPane.setVisible(show);
+        splitPane.setDividerLocation(show ? 0.5 : 1.0);
+        updateStatus();
+    }
+
+    private void updatePreview() {
+        if (!isPreviewVisible) return;
+        
+        SwingUtilities.invokeLater(() -> {
+            String text = textArea.getText();
+            String contentType = detectContentType(text);
+            
+            if ("text/html".equals(contentType)) {
+                previewPane.setContentType("text/html");
+                previewPane.setText(text);
+            } else if ("text/markdown".equals(contentType)) {
+                previewPane.setContentType("text/html");
+                previewPane.setText(convertMarkdownToHtml(text));
+            } else {
+                previewPane.setContentType("text/plain");
+                previewPane.setText("No preview available for plain text");
+            }
+        });
+    }
+
+    private String detectContentType(String text) {
+        // Simple detection - check for HTML tags or Markdown headers
+        if (text.trim().startsWith("<") && text.trim().endsWith(">")) {
+            return "text/html";
+        }
+        if (text.contains("# ") || text.contains("## ") || text.contains("**") || 
+            text.contains("* ") || text.contains("- ") || text.contains("```")) {
+            return "text/markdown";
+        }
+        return "text/plain";
+    }
+
+    private String convertMarkdownToHtml(String markdown) {
+        // Enhanced Markdown to HTML conversion
+        String html = "<html><body style='font-family: Arial; font-size: 14px; padding: 10px;'>";
+        
+        // Headers
+        html = html.replaceAll("(?m)^# (.*?)$", "<h1>$1</h1>");
+        html = html.replaceAll("(?m)^## (.*?)$", "<h2>$1</h2>");
+        html = html.replaceAll("(?m)^### (.*?)$", "<h3>$1</h3>");
+        html = html.replaceAll("(?m)^#### (.*?)$", "<h4>$1</h4>");
+        
+        // Bold and italic
+        html = html.replaceAll("\\*\\*(.*?)\\*\\*", "<b>$1</b>");
+        html = html.replaceAll("__(.*?)__", "<b>$1</b>");
+        html = html.replaceAll("\\*(.*?)\\*", "<i>$1</i>");
+        html = html.replaceAll("_(.*?)_", "<i>$1</i>");
+        
+        // Code blocks
+        html = html.replaceAll("```(.*?)```", "<pre><code>$1</code></pre>");
+        
+        // Inline code
+        html = html.replaceAll("`(.*?)`", "<code>$1</code>");
+        
+        // Lists
+        html = html.replaceAll("(?m)^- (.*?)$", "<li>$1</li>");
+        html = html.replaceAll("(?m)^\\* (.*?)$", "<li>$1</li>");
+        html = html.replaceAll("(?m)^\\d+\\. (.*?)$", "<li>$1</li>");
+        html = html.replaceAll("(?s)(<li>.*?</li>)", "<ul>$1</ul>");
+        
+        // Links
+        html = html.replaceAll("\```math
+(.*?)\```\KATEX_INLINE_OPEN(.*?)\KATEX_INLINE_CLOSE", "<a href='$2'>$1</a>");
+        
+        // Images
+        html = html.replaceAll("!\```math
+(.*?)\```\KATEX_INLINE_OPEN(.*?)\KATEX_INLINE_CLOSE", "<img src='$2' alt='$1' style='max-width: 100%;'>");
+        
+        // Paragraphs
+        html = html.replaceAll("(?m)^(?!<[hlu])(.*?)$", "<p>$1</p>");
+        
+        // Line breaks
+        html = html.replaceAll("\n", "<br>");
+        
+        return html + "</body></html>";
     }
 
     public static void main(String[] args) {
