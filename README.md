@@ -1,149 +1,253 @@
-# Modern Plugin-Based Text Editor
+# Modern Plugin-Based Text Editor (Java Swing)
 
-## 📖 Project Overview
-
-This project is a sophisticated, lightweight text editor built with Java Swing. Its primary feature is a dynamic plugin architecture, which allows for seamless extension of its core functionality without modifying the main application's code. By leveraging interfaces and Java's dynamic class loading capabilities, the editor becomes a highly modular and extensible platform. The application provides a modern, dark-themed user interface, complete with a real-time status bar and essential file operations.
-
-This serves as an excellent demonstration of object-oriented design principles, showcasing how a well-defined API can enable a robust, modular, and easily expandable software system.
+A lightweight, modular text editor built with Java Swing featuring a dynamic plugin architecture. The core editor is intentionally minimal and safe, while plugins extend its functionality at runtime by loading standalone JARs from the plugins folder. This repository demonstrates clean OOP design, dynamic class loading, and a practical approach to extending a GUI application without touching the core codebase.
 
 ---
 
-A **powerful, extensible, and modern** text editor built with Java Swing, featuring:
+## Table of Contents
 
-- A **dark-themed** professional UI
-- A **dynamic plugin architecture** for limitless extensibility
-- Built-in **spell check**, **Undo/Redo**, and **Plugin Manager UI**
-- Multiple **sample plugins** ready to use
-- Easy **plugin development workflow**
-
-This project demonstrates advanced **Java OOP design principles**, including interfaces, abstraction, dynamic class loading, and modular UI development.
-
----
-
-## 🚀 Features
-
-### 🖌 Modern Core Editor
-
-- **Dark Theme UI**: Stylish, minimal, and easy on the eyes
-- **Live Status Bar**: Tracks lines, words, and characters in real-time
-- **Quick Access Toolbar**: Undo, Redo, New File, Open, Save — right at your fingertips
-- **Find Functionality**: Search and highlight terms in your document
-- **Undo & Redo Support**: With shortcuts <kbd>Ctrl+Z</kbd> and <kbd>Ctrl+Y</kbd>
-- **Spell Check Plugin**: Highlights misspelled words instantly
-
-### ⚙️ Dynamic Plugin System
-
-- **Auto-Detection**: Loads `.jar` plugins from the `plugins` folder automatically
-- **Plugin Menu**: Dynamically lists all loaded plugins
-- **Safe Execution**: Runs plugins in isolation with error handling
-- **Plugin Manager UI**: View, enable, or disable installed plugins
-
-### 🧩 Included Sample Plugins
-
-1. **Word Count Plugin** — Counts the words in your document
-2. **To Uppercase Plugin** — Converts selected text to uppercase
-3. **Spell Check Plugin** — Highlights misspelled words in the text
+- [Overview & Highlights](#overview--highlights)
+- [Project Structure](#project-structure)
+- [Key Features](#key-features)
+- [How the Plugin System Works](#how-the-plugin-system-works)
+- [Getting Started (Manual Build)](#getting-started-manual-build)
+  - [Prerequisites](#prerequisites)
+  - [Clone & Inspect](#clone--inspect)
+  - [Build Instructions](#build-instructions)
+  - [Run the Editor](#run-the-editor)
+  - [Managing Plugins](#managing-plugins)
+- [Developing Plugins](#developing-plugins)
+  - [Create a New Plugin](#create-a-new-plugin)
+  - [Sample Plugin Template](#sample-plugin-template)
+  - [Packaging Plugins](#packaging-plugins)
+- [Project Architecture Details](#project-architecture-details)
+  - [API](#api)
+  - [Editor Core](#editor-core)
+  - [Plugin Manager UI](#plugin-manager-ui)
+- [Usage & UX Walkthrough](#usage--ux-walkthrough)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
-## 📂 Project Structure
+## Overview & Highlights
+
+- A modern, dark-themed text editor built with Java Swing.
+- Dynamic plugin system: load, enable/disable, and manage plugins at runtime.
+- Real-time status bar (lines, words, characters).
+- Built-in Undo/Redo support.
+- A lightweight, extensible plugin API (Java interface) that plugins implement.
+- Included sample plugins for word counting, text transformation, spell checking, statistics, and more.
+- Plugins are distributed as JARs in the plugins folder and discovered automatically on startup.
+
+---
+
+## Project Structure
+
+The repository is organized as follows:
 
 ```
-JavaPlugin/
-├── editor/
-│   ├── api/
-│   │   └── Plugin.java
-│   ├── app/
-│   │   └── Editor.java
-├── plugins/
-│   ├── wordcount/
-│   │   └── WordCountPlugin.java
-│   ├── touppercase/
-│   │   └── ToUppercasePlugin.java
-│   ├── spellcheck/
-│   │   └── SpellCheckPlugin.java
-└── README.md
+jitacm-30_days_java-java-plugin-/
+├── README.md
+└── JavaPlugin/
+    ├── editor/
+    │   ├── api/
+    │   │   └── Plugin.java
+    │   └── app/
+    │       └── Editor.java
+    └── plugins/
+        ├── codeformatter/
+        │   └── CodeFormatterPlugin.java
+        ├── spellcheck/
+        │   └── SpellCheckPlugin.java
+        ├── textstats/
+        │   └── TextStatsPlugin.java
+        ├── theme/
+        │   └── ThemePlugin.java
+        ├── touppercase/
+        │   └── ToUppercasePlugin.java
+        └── wordcount/
+            └── WordCountPlugin.java
 ```
+
+- Core API: `JavaPlugin/editor/api/Plugin.java`
+- Editor App: `JavaPlugin/editor/app/Editor.java`
+- Sample Plugins:
+  - Word Count: `JavaPlugin/plugins/wordcount/WordCountPlugin.java`
+  - To Uppercase: `JavaPlugin/plugins/touppercase/ToUppercasePlugin.java`
+  - Spell Check: `JavaPlugin/plugins/spellcheck/SpellCheckPlugin.java`
+  - Code Formatter: `JavaPlugin/plugins/codeformatter/CodeFormatterPlugin.java`
+  - Text Stats: `JavaPlugin/plugins/textstats/TextStatsPlugin.java`
+  - Theme: `JavaPlugin/plugins/theme/ThemePlugin.java`
 
 ---
 
-## 🛠 Installation & Running
+## Key Features
 
-### 1️⃣ Prerequisites
+- Dark theme UI with comfortable contrast.
+- Live status bar showing lines, words, and characters.
+- Undo/Redo with keyboard shortcuts (Ctrl+Z / Ctrl+Y).
+- Plugin system:
+  - Auto-detect and load `.jar` plugins from the plugins directory.
+  - Dynamic menu listing loaded plugins.
+  - Safe execution with per-plugin enable/disable controls.
+  - Plugin Manager UI to enable/disable plugins at runtime.
+- Included plugins:
+  - Word Count
+  - Convert Selection to Uppercase
+  - Spell Check
+  - Text Statistics
+  - Theme & Accessibility
+  - Code Formatter (multi-language awareness)
 
-- **Java JDK 11+**
-- Command-line or IDE (IntelliJ/Eclipse/NetBeans)
+---
 
-### 2️⃣ Clone the Repository
+## How the Plugin System Works
 
-```bash
-git clone <your-repo-url>
-cd JavaPlugin
+- The editor looks into the plugins directory for JAR files.
+- Each JAR is scanned for classes that implement the Plugin interface (editor.api.Plugin).
+- For each valid plugin class, an instance is created and registered with the UI.
+- The Plugins menu shows the name returned by getName().
+- Clicking a plugin executes its execute(JTextArea) method on the current document.
+- Plugins can be enabled/disabled via the Plugin Manager UI. Disabled plugins do not execute.
+
+Notes:
+- Plugins are loaded in isolation via a URLClassLoader pointing to the plugin JAR.
+- The system uses reflection to instantiate plugin classes and to invoke their methods safely within the editor’s UI flow.
+
+---
+
+## Getting Started (Manual Build)
+
+This project demonstrates a straightforward, no-ORM, no-build-tool approach using the JDK command line. It’s intentionally lightweight to illustrate dynamic class loading in Java.
+
+### Prerequisites
+
+- Java JDK 11+ (tested with Oracle/OpenJDK).
+- A command-line environment (bash, zsh, PowerShell, etc.).
+
+### Clone & Inspect
+
+- Clone the repository (or download the folder contents).
+- Inspect the directory structure shown above to understand the plugin layout.
+
+### Build Instructions
+
+The following commands illustrate a minimal, incremental build process. Run them from the repository root.
+
+1) Compile the Plugin API (interface)
+
 ```
-
-### 3️⃣ Compile the Plugin API
-
-```bash
 javac editor/api/Plugin.java
 ```
 
-### 4️⃣ Compile and Package Plugins
+2) Compile the Editor (core app)
 
-```bash
-# Compile
-javac -cp . plugins/wordcount/WordCountPlugin.java
-javac -cp . plugins/touppercase/ToUppercasePlugin.java
-javac -cp . plugins/spellcheck/SpellCheckPlugin.java
-
-# Package into JARs
-jar -cf plugins/wordcount.jar -C . plugins/wordcount
-jar -cf plugins/touppercase.jar -C . plugins/touppercase
-jar -cf plugins/spellcheck.jar -C . plugins/spellcheck
 ```
-
-### 5️⃣ Compile the Main Application
-
-```bash
 javac -cp . editor/app/Editor.java
 ```
 
-### 6️⃣ Run the Editor
+3) Compile Sample Plugins and Package Them as JARs
 
-```bash
+For each plugin, compile and jar. The Editor expects plugins in the jars inside the plugins directory, with a structure matching their package declarations.
+
+- Word Count
+
+```
+javac -cp . plugins/wordcount/WordCountPlugin.java
+jar -cf plugins/wordcount.jar -C . plugins/wordcount
+```
+
+- To Uppercase
+
+```
+javac -cp . plugins/touppercase/ToUppercasePlugin.java
+jar -cf plugins/touppercase.jar -C . plugins/touppercase
+```
+
+- Spell Check
+
+```
+javac -cp . plugins/spellcheck/SpellCheckPlugin.java
+jar -cf plugins/spellcheck.jar -C . plugins/spellcheck
+```
+
+- Code Formatter
+
+```
+javac -cp . plugins/codeformatter/CodeFormatterPlugin.java
+jar -cf plugins/codeformatter.jar -C . plugins/codeformatter
+```
+
+- Text Statistics
+
+```
+javac -cp . plugins/textstats/TextStatsPlugin.java
+jar -cf plugins/textstats.jar -C . plugins/textstats
+```
+
+- Theme & Accessibility
+
+```
+javac -cp . plugins/theme/ThemePlugin.java
+jar -cf plugins/theme.jar -C . plugins/theme
+```
+
+> Important: Each plugin declares its package (e.g., `package plugins.wordcount;`). The corresponding jar should contain the class file at the path matching the package. The Editor loads classes by their fully-qualified names derived from the jar’s internal path, so ensure the packaging respects the declared package.
+
+4) Compile the Main Application (optional if you want to run directly from class files)
+
+```
+javac -cp . editor/app/Editor.java
+```
+
+5) Run the Editor
+
+```
 java -cp . editor.app.Editor
 ```
 
----
+- The Editor will automatically scan the plugins directory, load plugins from the jars, and populate the Plugins menu.
 
-## 🎨 Usage
-
-**Toolbar Buttons:**
-
-- 🆕 **New File** — Clears the editor
-- 📂 **Open File** — Opens a .txt file
-- 💾 **Save File** — Saves the current file
-- ↩ **Undo** — Reverts last change (<kbd>Ctrl+Z</kbd>)
-- ↪ **Redo** — Restores reverted change (<kbd>Ctrl+Y</kbd>)
-
-**Plugins:**
-
-- Access via **Plugins** menu
-- Click a plugin to run it on the current text
-- Manage plugins from **Plugin Manager UI**
+Tips:
+- If you add new plugins or jar files, use the “Reload Plugins” option from the Plugins menu to refresh the list without restarting the editor.
+- Plugins are executed in the same JVM as the editor. While they run in isolation within a single process, ensure plugin code is defensive to avoid crashing the editor.
 
 ---
 
-## 🧑‍💻 Creating Your Own Plugin
+## Managing Plugins
 
-**Create a New Plugin Class**
+- On startup, the editor scans the plugins directory for jars ending in .jar.
+- Each loaded plugin is shown in the Plugins menu by name (as returned by getName()).
+- The Plugins menu also includes:
+  - Manage Plugins… — Opens a UI to enable/disable plugins.
+  - Reload Plugins — Re-scan the plugins directory and refresh the menu.
+
+Plugin Manager UI:
+- Shows a list of available plugins with:
+  - Name
+  - Enable/Disable toggle
+  - Status (Enabled/Disabled)
+- Toggling a plugin updates its state in memory. You can enable a plugin later by reloading or re-opening the manager.
+
+---
+
+## Developing Plugins
+
+The plugin API is intentionally lightweight to encourage experimentation and rapid iteration.
+
+### Create a New Plugin
+
+1) Create a new Java class implementing the Plugin interface:
 
 ```java
 package plugins.myplugin;
 
 import editor.api.Plugin;
-import javax.swing.*;
+import javax.swing.JOptionPane;
+import javax.swing.JTextArea;
 
-public class MyPlugin implements Plugin {
+public class MyAwesomePlugin implements Plugin {
     @Override
     public String getName() {
         return "My Awesome Plugin";
@@ -152,43 +256,110 @@ public class MyPlugin implements Plugin {
     @Override
     public void execute(JTextArea textArea) {
         JOptionPane.showMessageDialog(null, "Plugin executed!");
+        // Example: insert text at the caret
+        int pos = textArea.getCaretPosition();
+        textArea.insert("Hello from My Awesome Plugin!", pos);
     }
 }
 ```
 
-**Compile & Package**
+2) Compile and Package into a JAR (as shown in the Build Instructions above). Place the resulting jar in the plugins directory.
 
-```bash
-javac -cp . plugins/myplugin/MyPlugin.java
+3) Run the Editor and verify that your plugin appears in the Plugins menu and executes on the current document.
+
+### Sample Plugin Template
+
+The repository already contains a few sample plugins that illustrate common tasks:
+- WordCountPlugin (counts words)
+- ToUppercasePlugin (converts selected text to uppercase)
+- SpellCheckPlugin (basic dictionary-based spell check)
+- CodeFormatterPlugin (language-aware formatting)
+- TextStatsPlugin (sentence count and average word length)
+- ThemePlugin (theme and font adjustments)
+
+You can copy, modify, and repackage any of these examples as a starting point.
+
+### Packaging Plugins
+
+- Build your plugin with its package structure preserved.
+- Create a jar containing the compiled class files in your plugin’s package tree, e.g.:
+
+```
 jar -cf plugins/myplugin.jar -C . plugins/myplugin
 ```
 
-**Run the Editor**
-
-Your plugin will now appear in the Plugins menu automatically.
+- Place your jar in the plugins folder. The editor will load it on next startup or when you press Reload Plugins.
 
 ---
 
-## 📌 Upcoming Features (Proposal)
+## Project Architecture Details
 
-- Multiple theme support (Light/Dark/Custom)
-- Real-time collaborative editing
-- Syntax highlighting for code
-- Plugin marketplace UI
+### API (Plugin Interface)
+
+- Location: JavaPlugin/editor/api/Plugin.java
+- Purpose: A minimal contract used by all plugins.
+- Methods:
+  - String getName(): Returns the user-facing plugin name.
+  - void execute(JTextArea textArea): Executes the plugin’s functionality on the provided text area.
+
+### Editor Core
+
+- Location: JavaPlugin/editor/app/Editor.java
+- Responsibilities:
+  - UI: JFrame with a dark-themed text area, status bar, toolbar, and menus.
+  - Editor features: New/Open/Save, Find, Undo/Redo, and a dynamic Plugins menu.
+  - Plugin loading: Scans the plugins directory, loads classes implementing Plugin, instantiates them, and wires UI actions.
+  - Plugin management: UI for enabling/disabling plugins; dynamic reloading.
+
+Key Components:
+- UndoManager: Provides robust Undo/Redo for text edits.
+- JTextArea: Central editing component with custom font and colors for a dark UI.
+- Plugins menu: Populated at runtime with all loaded plugins.
+- Plugin Manager: Dialog-based UI to enable/disable plugins.
+
+### Plugin Manager UI
+
+- Displays each loaded plugin with:
+  - Name
+  - Enable/Disable button
+  - Status label (Enabled/Disabled)
+- Allows toggling plugin state in-app (without restart).
 
 ---
 
-## 📄 License
+## Usage & UX Walkthrough
 
-This project is licensed under the MIT License.
+- Start the editor. You’ll see a dark-themed UI with a status bar at the bottom showing Lines, Words, and Chars.
+- Use the toolbar for New/Open/Save, and Undo/Redo.
+- Open a text document and select some text.
+- Navigate to Plugins -> [Your Plugins] to execute a plugin on the current text.
+- Open Plugins -> Manage Plugins… to enable or disable any loaded plugin.
+- If you install new plugin jars, click Reload Plugins to refresh the menu.
+
+Common plugin examples included:
+- Word Count: Shows the number of words in the document.
+- Convert Selection to Uppercase: Converts the selected text to uppercase.
+- Spell Check: Highlights potential misspellings using a small dictionary.
+- Text Statistics: Shows sentence count and average word length.
+- Theme & Accessibility: Changes theme and font size for better readability.
+- Code Formatter: Attempts basic language-aware formatting (Java, Python, C++).
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
-We welcome contributions!
+- This project is designed to be accessible for contributors.
+- If you’d like to add plugins, follow the “Developing Plugins” section above.
+- Please submit issues and pull requests with a clear description of changes, testing steps, and potential impact on the plugin system.
 
-- Fork the repository
-- Create a feature branch
-- Submit a Pull Request describing your changes
-- 
+---
+
+## License
+
+MIT License. See LICENSE (or the project root) for full text.
+
+---
+
+        └── wordcount/
+            └── WordCountPlugin.java
+```
