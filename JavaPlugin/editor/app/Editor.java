@@ -16,6 +16,8 @@ import java.net.URLClassLoader;
 import java.util.*;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class Editor extends JFrame {
 
@@ -64,7 +66,6 @@ public class Editor extends JFrame {
             @Override public void changedUpdate(DocumentEvent e) { updateStatus(); }
         });
 
-        // Undo/Redo support
         textArea.getDocument().addUndoableEditListener(e -> undoManager.addEdit(e.getEdit()));
         addUndoRedoKeyBindings();
 
@@ -111,7 +112,8 @@ public class Editor extends JFrame {
         addMenuItem(fileMenu, "New", "Create a new file", e -> newFile());
         addMenuItem(fileMenu, "Open", "Open a text file", e -> openFile());
         addMenuItem(fileMenu, "Save", "Save the current file", e -> saveFile());
-        addMenuItem(fileMenu, "Find", "Find text in the document", e -> findText());
+        // Updated here: Removed old "Find" and added new "Find and Replace"
+        addMenuItem(fileMenu, "Find and Replace", "Find and replace text", e -> findAndReplaceText());
         fileMenu.addSeparator();
         addMenuItem(fileMenu, "Exit", "Exit the application", e -> System.exit(0));
         menuBar.add(fileMenu);
@@ -195,21 +197,87 @@ public class Editor extends JFrame {
         }
     }
 
-    private void findText() {
-        String textToFind = JOptionPane.showInputDialog(this, "Enter text to find:");
-        if (textToFind != null && !textToFind.isEmpty()) {
-            String text = textArea.getText();
-            int index = text.indexOf(textToFind);
+    // New method for Find and Replace functionality
+    private void findAndReplaceText() {
+        JDialog findReplaceDialog = new JDialog(this, "Find and Replace", true);
+        findReplaceDialog.setSize(400, 200);
+        findReplaceDialog.setLocationRelativeTo(this);
+        findReplaceDialog.setLayout(new GridLayout(5, 2, 5, 5));
+
+        JTextField findField = new JTextField();
+        JTextField replaceField = new JTextField();
+        JCheckBox caseSensitive = new JCheckBox("Case Sensitive");
+        JButton findButton = new JButton("Find Next");
+        JButton replaceButton = new JButton("Replace");
+        JButton replaceAllButton = new JButton("Replace All");
+
+        findReplaceDialog.add(new JLabel("Find:"));
+        findReplaceDialog.add(findField);
+        findReplaceDialog.add(new JLabel("Replace with:"));
+        findReplaceDialog.add(replaceField);
+        findReplaceDialog.add(new JLabel("Options:"));
+        findReplaceDialog.add(caseSensitive);
+
+        JPanel findPanel = new JPanel(new GridLayout(1, 1));
+        findPanel.add(findButton);
+        findReplaceDialog.add(findPanel);
+
+        JPanel replacePanel = new JPanel(new GridLayout(1, 2, 5, 5));
+        replacePanel.add(replaceButton);
+        replacePanel.add(replaceAllButton);
+        findReplaceDialog.add(replacePanel);
+
+
+        findButton.addActionListener(e -> {
+            String textToFind = findField.getText();
+            String editorText = caseSensitive.isSelected() ? textArea.getText() : textArea.getText().toLowerCase();
+            String findText = caseSensitive.isSelected() ? textToFind : textToFind.toLowerCase();
+
+            if (textToFind.isEmpty()) return;
+
+            int start = textArea.getSelectionEnd();
+            int index = editorText.indexOf(findText, start);
             if (index != -1) {
                 textArea.setCaretPosition(index);
                 textArea.setSelectionStart(index);
                 textArea.setSelectionEnd(index + textToFind.length());
                 textArea.requestFocus();
             } else {
-                JOptionPane.showMessageDialog(this, "Text not found", "Not Found", JOptionPane.INFORMATION_MESSAGE);
+                JOptionPane.showMessageDialog(findReplaceDialog, "Text not found from current position.", "Not Found", JOptionPane.INFORMATION_MESSAGE);
             }
-        }
+        });
+
+        replaceButton.addActionListener(e -> {
+            String replaceWith = replaceField.getText();
+            if (textArea.getSelectedText() != null && textArea.getSelectedText().length() == findField.getText().length()) {
+                textArea.replaceSelection(replaceWith);
+            } else {
+                JOptionPane.showMessageDialog(findReplaceDialog, "Please select the text to be replaced first.", "Cannot Replace", JOptionPane.WARNING_MESSAGE);
+            }
+        });
+
+        replaceAllButton.addActionListener(e -> {
+            String findStr = findField.getText();
+            String replaceStr = replaceField.getText();
+            String originalText = textArea.getText();
+            
+            String newText = originalText;
+            if (caseSensitive.isSelected()) {
+                newText = newText.replaceAll(Pattern.quote(findStr), Matcher.quoteReplacement(replaceStr));
+            } else {
+                // For case-insensitive replacement, we need to iterate and replace
+                Pattern p = Pattern.compile(Pattern.quote(findStr), Pattern.CASE_INSENSITIVE);
+                Matcher m = p.matcher(originalText);
+                newText = m.replaceAll(Matcher.quoteReplacement(replaceStr));
+            }
+            
+            textArea.setText(newText);
+            JOptionPane.showMessageDialog(findReplaceDialog, "All occurrences replaced.", "Replace All", JOptionPane.INFORMATION_MESSAGE);
+        });
+
+        findReplaceDialog.setVisible(true);
     }
+    // -----------------------------------------------------------------------------------------------------------------------------
 
     private void loadPlugins() {
         pluginsMenu.removeAll();
